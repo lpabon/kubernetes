@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
@@ -31,7 +32,28 @@ import (
 
 const ProxyProtocolPolicyName = "k8s-proxyprotocol-enabled"
 
-func (c *Cloud) ensureLoadBalancer(namespacedName types.NamespacedName, loadBalancerName string, listeners []*elb.Listener, subnetIDs []string, securityGroupIDs []string, internalELB, proxyProtocol bool, loadBalancerAttributes *elb.LoadBalancerAttributes) (*elb.LoadBalancerDescription, error) {
+func (c *Cloud) getLoadBalancerAdditionalTags(annotations map[string]string) map[string]string {
+	additionalTags := make(map[string]string)
+	if additionalTagsList, ok := annotations[ServiceAnnotationLoadBalancerAdditionalTags]; ok {
+		additionalTagsList = strings.TrimSpace(additionalTagsList)
+
+		// Break up list of "Key1=Val,Key2=Val2"
+		tagList := strings.Split(additionalTagsList, ",")
+
+		// Break up "Key=Val"
+		for _, tagSet := range tagList {
+			tag := strings.Split(strings.TrimSpace(tagSet), "=")
+			if len(tag) >= 2 {
+				// There is a key and a value, so save it
+				additionalTags[tag[0]] = tag[1]
+			}
+		}
+	}
+
+	return additionalTags
+}
+
+func (c *Cloud) ensureLoadBalancer(namespacedName types.NamespacedName, loadBalancerName string, listeners []*elb.Listener, subnetIDs []string, securityGroupIDs []string, internalELB, proxyProtocol bool, loadBalancerAttributes *elb.LoadBalancerAttributes, annotations map[string]string) (*elb.LoadBalancerDescription, error) {
 	loadBalancer, err := c.describeLoadBalancer(loadBalancerName)
 	if err != nil {
 		return nil, err
@@ -55,9 +77,10 @@ func (c *Cloud) ensureLoadBalancer(namespacedName types.NamespacedName, loadBala
 
 		createRequest.SecurityGroups = stringPointerArray(securityGroupIDs)
 
-		tags := c.tagging.buildTags(ResourceLifecycleOwned, map[string]string{
-			TagNameKubernetesService: namespacedName.String(),
-		})
+		// Get additional tags set by the user
+		tags := c.getLoadBalancerAdditionalTags(annotations)
+		tags[TagNameKubernetesService] = namespacedName.String()
+		tags = c.tagging.buildTags(ResourceLifecycleOwned, tags)
 
 		for k, v := range tags {
 			createRequest.Tags = append(createRequest.Tags, &elb.Tag{
