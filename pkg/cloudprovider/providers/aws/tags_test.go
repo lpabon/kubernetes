@@ -109,3 +109,55 @@ func TestFindClusterID(t *testing.T) {
 		}
 	}
 }
+
+func TestGetLoadBalancerAdditionalTags(t *testing.T) {
+	tagTests := []struct {
+		Annotations map[string]string
+		Tags        map[string]string
+	}{
+		{
+			Annotations: map[string]string{
+				ServiceAnnotationLoadBalancerAdditionalTags: "Key=Val",
+			},
+			Tags: map[string]string{
+				"Key": "Val",
+			},
+		},
+		{
+			Annotations: map[string]string{
+				ServiceAnnotationLoadBalancerAdditionalTags: "Key1=Val1, Key2=Val2",
+			},
+			Tags: map[string]string{
+				"Key1": "Val1",
+				"Key2": "Val2",
+			},
+		},
+		{
+			Annotations: map[string]string{
+				ServiceAnnotationLoadBalancerAdditionalTags: "Key1=, Key2=Val2",
+			},
+			Tags: map[string]string{
+				"Key2": "Val2",
+			},
+		},
+		{
+			Annotations: map[string]string{
+				"Nothing": "Key1=, Key2=Val2",
+			},
+			Tags: map[string]string{},
+		},
+	}
+
+	for _, tagTest := range tagTests {
+		result := getLoadBalancerAdditionalTags(tagTest.Annotations)
+		for k, v := range result {
+			if len(result) != len(tagTest.Tags) {
+				t.Errorf("incorrect expected length: %v != %v", result, tagTest.Tags)
+			}
+			if tagTest.Tags[k] != v {
+				t.Errorf("%s != %s", tagTest.Tags[k], v)
+				continue
+			}
+		}
+	}
+}

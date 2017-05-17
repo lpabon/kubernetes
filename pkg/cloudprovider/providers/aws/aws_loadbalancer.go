@@ -32,8 +32,9 @@ import (
 
 const ProxyProtocolPolicyName = "k8s-proxyprotocol-enabled"
 
-func (c *Cloud) getLoadBalancerAdditionalTags(annotations map[string]string) map[string]string {
+func getLoadBalancerAdditionalTags(annotations map[string]string) map[string]string {
 	additionalTags := make(map[string]string)
+	glog.Infof(">>> Called with %v\n", annotations)
 	if additionalTagsList, ok := annotations[ServiceAnnotationLoadBalancerAdditionalTags]; ok {
 		additionalTagsList = strings.TrimSpace(additionalTagsList)
 
@@ -43,9 +44,10 @@ func (c *Cloud) getLoadBalancerAdditionalTags(annotations map[string]string) map
 		// Break up "Key=Val"
 		for _, tagSet := range tagList {
 			tag := strings.Split(strings.TrimSpace(tagSet), "=")
-			if len(tag) >= 2 {
+			if len(tag) >= 2 && len(tag[1]) != 0 {
 				// There is a key and a value, so save it
 				additionalTags[tag[0]] = tag[1]
+				glog.Infof(">>> Adding Tag[%s] = %s\n", tag[0], tag[1])
 			}
 		}
 	}
@@ -78,11 +80,12 @@ func (c *Cloud) ensureLoadBalancer(namespacedName types.NamespacedName, loadBala
 		createRequest.SecurityGroups = stringPointerArray(securityGroupIDs)
 
 		// Get additional tags set by the user
-		tags := c.getLoadBalancerAdditionalTags(annotations)
+		tags := getLoadBalancerAdditionalTags(annotations)
 		tags[TagNameKubernetesService] = namespacedName.String()
 		tags = c.tagging.buildTags(ResourceLifecycleOwned, tags)
 
 		for k, v := range tags {
+			glog.Infof(">>> Adding Tag %s = %s \n", k, v)
 			createRequest.Tags = append(createRequest.Tags, &elb.Tag{
 				Key: aws.String(k), Value: aws.String(v),
 			})
